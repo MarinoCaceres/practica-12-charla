@@ -3,30 +3,46 @@ package mx.tec.charla.ui.state
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.IOException
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import mx.tec.charla.BuildConfig
+import kotlinx.coroutines.withContext
+import mx.tec.charla.data.local.SalaStore
+import mx.tec.charla.data.qr.GeneradorQr
 import mx.tec.charla.data.remote.ChatConexion
 import mx.tec.charla.data.remote.EventoServidor
 import mx.tec.charla.data.remote.Orden
-import mx.tec.charla.domain.ANFITRION
-import mx.tec.charla.domain.Destino
+import mx.tec.charla.data.remote.SalaApi
 import mx.tec.charla.domain.Solicitud
+import retrofit2.HttpException
 
 @HiltViewModel
-class SalaViewModel @Inject constructor(private val conexion: ChatConexion) : ViewModel() {
+class SalaViewModel @Inject constructor(
+    private val store: SalaStore,
+    private val conexion: ChatConexion,
+    private val api: SalaApi
+) : ViewModel() {
 
-    // Por ahora solo existe tu sala, y su dirección sale de local.properties. En el C2 la guarda SalaStore.
-    private val destino = Destino(BuildConfig.SERVIDOR_PROPIO, BuildConfig.CLAVE_ANFITRION, ANFITRION, esPropio = true)
-
-    private val _ui = MutableStateFlow(SalaUiState(destino = destino))
+    private val _ui = MutableStateFlow(SalaUiState())
     val ui: StateFlow<SalaUiState> = _ui.asStateFlow()
 
+    private var visible = false
+
     init {
+        viewModelScope.launch {
+            // Cada vez que cambia la sala (entraste a otra, o Reiniciar), se conecta a la nueva.
+            store.destino.distinctUntilChanged().collect { destino ->
+                // Sala nueva, pantalla en blanco: la historia llega con la bienvenida.
+                _ui.update { SalaUiState(destino = destino, conexion = it.conexion) }
+                if (visible) conexion.conectar(destino.servidor, destino.token)
+            }
+        }
         viewModelScope.launch {
             conexion.estado.collect { estado -> _ui.update { it.copy(conexion = estado) } }
         }
@@ -36,10 +52,16 @@ class SalaViewModel @Inject constructor(private val conexion: ChatConexion) : Vi
     }
 
     /** La pantalla se ve: a conectarse. Lo llama LifecycleStartEffect. */
-    fun alAparecer() = conexion.conectar(destino.servidor, destino.token)
+    fun alAparecer() {
+        visible = true
+        _ui.value.destino?.let { conexion.conectar(it.servidor, it.token) }
+    }
 
     /** La app se fue al fondo: se cierra. Un socket abierto sin nadie viendo gasta batería. */
-    fun alDesaparecer() = conexion.desconectar()
+    fun alDesaparecer() {
+        visible = false
+        conexion.desconectar()
+    }
 
     private fun recibir(evento: EventoServidor) {
         when (evento) {
@@ -63,12 +85,29 @@ class SalaViewModel @Inject constructor(private val conexion: ChatConexion) : Vi
         if (conexion.enviar(orden)) _ui.update { it.copy(solicitudes = it.solicitudes - solicitud) }
     }
 
-    // La invitación y Reiniciar necesitan la API de la sala y SalaStore: llegan en el C2.
-    fun invitar() {}
+    /** Pregunta a TU servidor su dirección pública y la convierte en QR. */
+    fun invitar() {
+        _ui.update { it.copy(invitacion = InvitacionUi.Cargando) }
+        viewModelScope.launch {
+            val invitacion = try {
+                val url = api.invitacion("${SalaStore.propio.servidor}/invitacion").url
+                // Dibujar el QR son medio millón de pixeles: fuera del hilo principal.
+                InvitacionUi.Lista(url, withContext(Dispatchers.Default) { GeneradorQr.bitmap(url) })
+            } catch (e: IOException) {
+                InvitacionUi.Error(mensajeDe(e))
+            } catch (e: HttpException) {
+                InvitacionUi.Error(mensajeDe(e))
+            }
+            _ui.update { it.copy(invitacion = invitacion) }
+        }
+    }
 
-    fun cerrarInvitacion() {}
+    fun cerrarInvitacion() = _ui.update { it.copy(invitacion = InvitacionUi.Cerrada) }
 
-    fun reiniciar() {}
+    /** Olvida la sala ajena. `store.destino` cambia, y el `collect` de arriba reconecta solo. */
+    fun reiniciar() {
+        viewModelScope.launch { store.reiniciar() }
+    }
 
     override fun onCleared() = conexion.desconectar()
 }
