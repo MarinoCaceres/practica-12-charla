@@ -17,6 +17,8 @@ zxing = "3.5.4"
 codeScanner = "16.1.0"
 barcodeScanning = "17.3.0"
 coroutinesPlayServices = "1.10.2"
+junit = "4.13.2"
+
 
 
 [libraries]
@@ -45,6 +47,8 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 play-services-code-scanner = { group = "com.google.android.gms", name = "play-services-code-scanner", version.ref = "codeScanner" }
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "barcodeScanning" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
