@@ -110,7 +110,6 @@ class ChatConexion(
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            if (webSocket !== actual) return
             reintentar()
         }
 
