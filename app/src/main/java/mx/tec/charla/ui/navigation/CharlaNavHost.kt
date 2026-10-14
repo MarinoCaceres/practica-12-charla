@@ -33,6 +33,13 @@ fun CharlaNavHost() {
             val viewModel: SalaViewModel = hiltViewModel()
             val estado by viewModel.ui.collectAsStateWithLifecycle()
 
+            val selectorGaleria = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+                if (uri != null) viewModel.enviarImagenDesdeUri(uri)
+            }
+            val selectorCamara = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+                if (bitmap != null) viewModel.enviarImagenDesdeBitmap(bitmap)
+            }
+
             // Se ve: conectar. Se va (otra pantalla, o la app al fondo): cerrar.
             // Lo mismo que el tablón de la Práctica 8 con su stream.
             LifecycleStartEffect(Unit) {
@@ -43,6 +50,8 @@ fun CharlaNavHost() {
             SalaScreen(
                 estado = estado,
                 onEnviar = viewModel::enviar,
+                onTomarFoto = { selectorCamara.launch(null) },
+                onElegirGaleria = { selectorGaleria.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onAprobar = viewModel::aprobar,
                 onRechazar = viewModel::rechazar,
                 onInvitar = viewModel::invitar,

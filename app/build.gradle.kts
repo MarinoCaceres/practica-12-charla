@@ -66,6 +66,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     // Hilt (Práctica 9): la librería, el generador de código, y su pieza para ViewModel
     implementation(libs.hilt.android)

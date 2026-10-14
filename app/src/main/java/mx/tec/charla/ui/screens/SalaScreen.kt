@@ -70,6 +70,8 @@ import mx.tec.charla.ui.theme.CharlaTheme
 fun SalaScreen(
     estado: SalaUiState,
     onEnviar: (String) -> Boolean,
+    onTomarFoto: () -> Unit,
+    onElegirGaleria: () -> Unit,
     onAprobar: (Solicitud) -> Unit,
     onRechazar: (Solicitud) -> Unit,
     onInvitar: () -> Unit,
@@ -87,6 +89,8 @@ fun SalaScreen(
                 texto = borrador,
                 onTexto = { borrador = it },
                 onEnviar = { if (onEnviar(borrador)) borrador = "" },
+                onTomarFoto = onTomarFoto,
+                onElegirGaleria = onElegirGaleria,
                 habilitada = estado.puedeEscribir
             )
         }
@@ -106,7 +110,13 @@ fun SalaScreen(
             if (estado.mensajes.isEmpty()) {
                 SalaVacia(esPropio = estado.destino?.esPropio != false, modifier = Modifier.weight(1f))
             } else {
-                Mensajes(estado.mensajes, yo = estado.destino?.yo.orEmpty(), modifier = Modifier.weight(1f))
+                Mensajes(
+                    mensajes = estado.mensajes,
+                    yo = estado.destino?.yo.orEmpty(),
+                    servidor = estado.destino?.servidor.orEmpty(),
+                    token = estado.destino?.token.orEmpty(),
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
@@ -183,7 +193,7 @@ private fun Encabezado(estado: SalaUiState, onInvitar: () -> Unit, onUnirme: () 
 }
 
 @Composable
-private fun Mensajes(mensajes: List<Mensaje>, yo: String, modifier: Modifier = Modifier) {
+private fun Mensajes(mensajes: List<Mensaje>, yo: String, servidor: String, token: String, modifier: Modifier = Modifier) {
     val lista = rememberLazyListState()
     val e = CharlaTema.espaciado
     // Llega un mensaje: a la vista, abajo.
@@ -198,7 +208,13 @@ private fun Mensajes(mensajes: List<Mensaje>, yo: String, modifier: Modifier = M
             when (m.de) {
                 SALA -> AvisoDeSala(m.texto)
                 // El nombre solo en el primero de una racha: tres seguidos de dani son UNA voz.
-                else -> Burbuja(m, mia = m.de == yo, conNombre = i == 0 || mensajes[i - 1].de != m.de)
+                else -> Burbuja(
+                    mensaje = m,
+                    mia = m.de == yo,
+                    conNombre = i == 0 || mensajes[i - 1].de != m.de,
+                    servidor = servidor,
+                    token = token
+                )
             }
         }
     }
@@ -261,7 +277,7 @@ private fun SalaPreview() {
                 ),
                 solicitudes = listOf(Solicitud("x", "eli"))
             ),
-            onEnviar = { true }, onAprobar = {}, onRechazar = {}, onInvitar = {},
+            onEnviar = { true }, onTomarFoto = {}, onElegirGaleria = {}, onAprobar = {}, onRechazar = {}, onInvitar = {},
             onCerrarInvitacion = {}, onUnirme = {}, onReiniciar = {}
         )
     }

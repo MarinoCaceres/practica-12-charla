@@ -1,9 +1,13 @@
 package mx.tec.charla.data.remote
 
 import kotlinx.serialization.Serializable
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Url
 
 /**
@@ -22,6 +26,14 @@ interface SalaApi {
 
     @GET
     suspend fun consultar(@Url url: String): EstadoSolicitud
+
+    @Multipart
+    @POST
+    suspend fun uploadImage(
+        @Url url: String,
+        @Header("Authorization") autorizacion: String,
+        @Part file: MultipartBody.Part
+    ): UploadResponse
 }
 
 @Serializable
@@ -33,3 +45,6 @@ data class NuevaSolicitud(val nickname: String)
 /** `estado` es pendiente, aprobada o rechazada. El token solo llega cuando la aprueban. */
 @Serializable
 data class EstadoSolicitud(val id: String, val nickname: String, val estado: String, val token: String? = null)
+
+@Serializable
+data class UploadResponse(val id: String)

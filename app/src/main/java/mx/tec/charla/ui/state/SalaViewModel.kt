@@ -1,8 +1,13 @@
 package mx.tec.charla.ui.state
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -20,13 +25,17 @@ import mx.tec.charla.data.remote.EventoServidor
 import mx.tec.charla.data.remote.Orden
 import mx.tec.charla.data.remote.SalaApi
 import mx.tec.charla.domain.Solicitud
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 
 @HiltViewModel
 class SalaViewModel @Inject constructor(
     private val store: SalaStore,
     private val conexion: ChatConexion,
-    private val api: SalaApi
+    private val api: SalaApi,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(SalaUiState())
@@ -36,9 +45,7 @@ class SalaViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            // Cada vez que cambia la sala (entraste a otra, o Reiniciar), se conecta a la nueva.
             store.destino.distinctUntilChanged().collect { destino ->
-                // Sala nueva, pantalla en blanco: la historia llega con la bienvenida.
                 _ui.update { SalaUiState(destino = destino, conexion = it.conexion) }
                 if (visible) conexion.conectar(destino.servidor, destino.token)
             }
@@ -51,13 +58,11 @@ class SalaViewModel @Inject constructor(
         }
     }
 
-    /** La pantalla se ve: a conectarse. Lo llama LifecycleStartEffect. */
     fun alAparecer() {
         visible = true
         _ui.value.destino?.let { conexion.conectar(it.servidor, it.token) }
     }
 
-    /** La app se fue al fondo: se cierra. Un socket abierto sin nadie viendo gasta batería. */
     fun alDesaparecer() {
         visible = false
         conexion.desconectar()
@@ -65,7 +70,6 @@ class SalaViewModel @Inject constructor(
 
     private fun recibir(evento: EventoServidor) {
         when (evento) {
-            // Al conectar (y al reconectar) llega la historia completa: reemplaza, no suma.
             is EventoServidor.Bienvenida -> _ui.update {
                 it.copy(mensajes = evento.mensajes, solicitudes = evento.solicitudes)
             }
@@ -74,8 +78,53 @@ class SalaViewModel @Inject constructor(
         }
     }
 
-    /** true si salió. El mensaje no se pinta aquí: se pinta cuando el servidor lo reparte, a todos igual. */
     fun enviar(texto: String): Boolean = texto.isNotBlank() && conexion.enviar(Orden.Enviar(texto.trim()))
+
+    fun enviarImagenDesdeUri(uri: Uri) {
+        val destino = _ui.value.destino ?: return
+        viewModelScope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                } ?: return@launch
+                subirYEnviar(bytes, destino.servidor, destino.token)
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    fun enviarImagenDesdeBitmap(bitmap: Bitmap) {
+        val destino = _ui.value.destino ?: return
+        viewModelScope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    val stream = ByteArrayOutputStream()
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+                    stream.toByteArray()
+                }
+                subirYEnviar(bytes, destino.servidor, destino.token)
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    private suspend fun subirYEnviar(bytes: ByteArray, servidor: String, token: String) {
+        try {
+            val requestBody = bytes.toRequestBody("image/jpeg".toMediaType())
+            val part = MultipartBody.Part.createFormData("file", "image.jpg", requestBody)
+            val respuesta = withContext(Dispatchers.IO) {
+                api.uploadImage("$servidor/image/", "Bearer $token", part)
+            }
+            val imageId = respuesta.id
+            if (imageId.isNotBlank()) {
+                conexion.enviar(Orden.Enviar("/image:$imageId"))
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
 
     fun aprobar(solicitud: Solicitud) = responder(solicitud, Orden.Aprobar(solicitud.id))
 
@@ -85,13 +134,11 @@ class SalaViewModel @Inject constructor(
         if (conexion.enviar(orden)) _ui.update { it.copy(solicitudes = it.solicitudes - solicitud) }
     }
 
-    /** Pregunta a TU servidor su dirección pública y la convierte en QR. */
     fun invitar() {
         _ui.update { it.copy(invitacion = InvitacionUi.Cargando) }
         viewModelScope.launch {
             val invitacion = try {
                 val url = api.invitacion("${SalaStore.propio.servidor}/invitacion").url
-                // Dibujar el QR son medio millón de pixeles: fuera del hilo principal.
                 InvitacionUi.Lista(url, withContext(Dispatchers.Default) { GeneradorQr.bitmap(url) })
             } catch (e: IOException) {
                 InvitacionUi.Error(mensajeDe(e))
@@ -104,7 +151,6 @@ class SalaViewModel @Inject constructor(
 
     fun cerrarInvitacion() = _ui.update { it.copy(invitacion = InvitacionUi.Cerrada) }
 
-    /** Olvida la sala ajena. `store.destino` cambia, y el `collect` de arriba reconecta solo. */
     fun reiniciar() {
         viewModelScope.launch { store.reiniciar() }
     }

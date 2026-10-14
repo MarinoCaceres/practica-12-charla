@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -17,7 +18,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import mx.tec.charla.domain.Mensaje
 import mx.tec.charla.ui.theme.CharlaTema
 
@@ -29,7 +38,7 @@ import mx.tec.charla.ui.theme.CharlaTema
  * rectángulo redondeado se lea como globo de diálogo.
  */
 @Composable
-fun Burbuja(mensaje: Mensaje, mia: Boolean, conNombre: Boolean, modifier: Modifier = Modifier) {
+fun Burbuja(mensaje: Mensaje, mia: Boolean, conNombre: Boolean, servidor: String, token: String, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     val e = CharlaTema.espaciado
     val forma = if (mia) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
@@ -51,11 +60,29 @@ fun Burbuja(mensaje: Mensaje, mia: Boolean, conNombre: Boolean, modifier: Modifi
             if (!mia && conNombre) {
                 Text(mensaje.de, style = MaterialTheme.typography.labelMedium, color = c.primary)
             }
-            Text(
-                text = mensaje.texto,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (mia) c.onPrimary else c.onSurface
-            )
+            if (mensaje.texto.startsWith("/image:")) {
+                val imageId = mensaje.texto.substringAfter("/image:")
+                val imageUrl = "$servidor/image/$imageId"
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(imageUrl)
+                        .httpHeaders(NetworkHeaders.Builder().set("Authorization", "Bearer $token").build())
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Downloaded JPEG from FastAPI",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Text(
+                    text = mensaje.texto,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (mia) c.onPrimary else c.onSurface
+                )
+            }
             Text(
                 text = horaDe(mensaje.en),
                 style = MaterialTheme.typography.labelSmall,
